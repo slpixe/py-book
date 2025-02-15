@@ -56,6 +56,14 @@ def add_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     return response
 
+# Request logging decorator
+def log_request(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        app.logger.info(f'Request to {request.path} with params: {request.args}')
+        return f(*args, **kwargs)
+    return wrapper
+
 # Error handling decorator
 def handle_errors(f):
     @wraps(f)
@@ -282,6 +290,7 @@ def health_check():
 @limiter.limit("100/day")
 @cache.cached(timeout=300)
 @handle_errors
+@log_request
 def get_all_books():
     limit = request.args.get('limit', default=100, type=int)
     page = request.args.get('page', default=1, type=int)
@@ -302,6 +311,7 @@ def get_all_books():
 @app.route('/search')
 @limiter.limit("200/day")
 @handle_errors
+@log_request
 def search_books():
     query_params = request.args.to_dict()
     

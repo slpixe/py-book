@@ -326,7 +326,8 @@ else:
                     app.logger.error(f'Error parsing line {line_count}: {str(e)}')
                     error_count += 1
                     continue
-                        app.logger.info(f'Finished processing {line_count} lines with {error_count} errors')
+            
+            app.logger.info(f'Finished processing {line_count} lines with {error_count} errors')
             if books:
                 app.logger.info(f'Successfully loaded {len(books)} books from {data_file}')
             else:

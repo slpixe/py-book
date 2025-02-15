@@ -3,11 +3,11 @@ services:
     name: wikipedia-book-api
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn api:app
+    startCommand: gunicorn app:app
     envVars:
       - key: FLASK_ENV
         value: production
       - key: FLASK_APP
-        value: api.py
+        value: app.py
       - key: PORT
         value: 80

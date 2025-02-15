@@ -83,6 +83,24 @@ SWAGGER_DOC = {
         "description": "API for accessing and searching Wikipedia book data",
         "version": "1.0.0"
     },
+    "components": {
+        "schemas": {
+            "Book": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Book name"},
+                    "author": {"type": "string", "description": "Author name"},
+                    "language": {"type": "string", "description": "Book language"},
+                    "genre": {"type": "string", "description": "Book genre"},
+                    "publisher": {"type": "string", "description": "Publisher name"},
+                    "release_date": {"type": "string", "description": "Release date"},
+                    "media_type": {"type": "string", "description": "Media type"},
+                    "pages": {"type": "string", "description": "Number of pages"},
+                    "isbn": {"type": "string", "description": "ISBN"}
+                }
+            }
+        }
+    },
     "paths": {
         "/health": {
             "get": {
@@ -130,7 +148,12 @@ SWAGGER_DOC = {
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "books": {"type": "array"},
+                                        "books": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Book"
+                                            }
+                                        },
                                         "total": {"type": "integer"},
                                         "page": {"type": "integer"},
                                         "limit": {"type": "integer"},
@@ -210,7 +233,12 @@ SWAGGER_DOC = {
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "books": {"type": "array"},
+                                        "books": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Book"
+                                            }
+                                        },
                                         "total": {"type": "integer"}
                                     }
                                 }

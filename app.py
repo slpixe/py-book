@@ -44,12 +44,8 @@ limiter = Limiter(
     app=app,
     key_func=get_remote_address,
     default_limits=[f"{os.getenv('RATE_LIMIT', '100')}/day"],
-    storage_uri="memory://",
-    application_limits=[]  # No global limits
+    storage_uri="memory://"
 )
-
-# Configure endpoints that should be exempt from rate limiting
-limiter.exempt_routes(["/health"])
 
 # Security headers middleware
 @app.after_request
@@ -336,6 +332,7 @@ else:
         app.logger.error(f'Error reading database file: {str(e)}')
 
 @app.route('/health')
+@limiter.exempt
 def health_check():
     return jsonify({
         'status': 'healthy',

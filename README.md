@@ -37,14 +37,21 @@ cp .env.example .env
 
 ## Environment Variables
 
-- `FLASK_ENV`: Set to 'production' for production environment
-- `FLASK_APP`: Application entry point (default: api.py)
-- `SECRET_KEY`: Secret key for Flask session security
+### Required for Production
+
+These environment variables MUST be set in your production environment:
+
+- `PORT`: Port the application will listen on (usually 80 for production)
+- `FLASK_ENV`: Must be set to 'production'
+- `FLASK_APP`: Must be set to 'api.py'
+- `SECRET_KEY`: Strong secret key for security
+
+### Optional Configuration
+
 - `RATE_LIMIT`: API rate limit per day (default: 100)
 - `CACHE_TYPE`: Cache backend type (default: simple)
 - `CACHE_DEFAULT_TIMEOUT`: Cache timeout in seconds (default: 300)
-- `DATA_FILE`: Path to the NDJSON data file
-- `PORT`: Port to run the application (default: 8080)
+- `DATA_FILE`: Path to the NDJSON data file (default: data/found_books_filtered.ndjson)
 
 ## API Endpoints
 
@@ -55,12 +62,64 @@ cp .env.example .env
 - `GET /search`: Search books by various fields
   - Query params: name, author, language, genre, publisher, release_date, media_type, pages, isbn
 
-## Running in Production
+## Production Deployment
 
-1. Ensure all environment variables are properly configured in .env
-2. Run using Gunicorn:
+### Required Setup
+
+1. Ensure all required environment variables are set in your production environment:
 ```bash
-gunicorn api:app
+PORT=80
+FLASK_ENV=production
+FLASK_APP=api.py
+SECRET_KEY=your-secure-secret-key
+```
+
+2. The application uses gunicorn for production deployment as specified in the Procfile:
+```bash
+web: gunicorn api:app
+```
+
+### Platform-Specific Instructions
+
+#### Render
+
+1. Set the required environment variables in the Render Dashboard:
+   - `PORT`: 80
+   - `FLASK_ENV`: production
+   - `FLASK_APP`: api.py
+   - `SECRET_KEY`: [your secure secret key]
+
+2. The Procfile will automatically be used by Render to start the application
+
+#### Heroku
+
+1. Set the environment variables:
+```bash
+heroku config:set FLASK_ENV=production
+heroku config:set FLASK_APP=api.py
+heroku config:set SECRET_KEY=your-secure-secret-key
+```
+
+2. Deploy your application:
+```bash
+git push heroku main
+```
+
+#### Docker
+
+1. Build the image:
+```bash
+docker build -t wikipedia-book-api .
+```
+
+2. Run the container:
+```bash
+docker run -p 80:80 \
+  -e PORT=80 \
+  -e FLASK_ENV=production \
+  -e FLASK_APP=api.py \
+  -e SECRET_KEY=your-secure-secret-key \
+  wikipedia-book-api
 ```
 
 ## Security Features
@@ -89,11 +148,6 @@ The API implements caching for the following endpoints:
 - `/all` endpoint: 100 requests per day per IP
 - `/search` endpoint: 200 requests per day per IP
 - Configurable through RATE_LIMIT environment variable
-
-## Deployment
-
-The application is configured for deployment on Heroku or similar platforms using Gunicorn.
-A Procfile is included for Heroku deployment.
 
 ## Testing
 

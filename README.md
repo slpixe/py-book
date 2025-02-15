@@ -44,7 +44,6 @@ These environment variables MUST be set in your production environment:
 - `PORT`: Port the application will listen on (usually 80 for production)
 - `FLASK_ENV`: Must be set to 'production'
 - `FLASK_APP`: Must be set to 'api.py'
-- `SECRET_KEY`: Strong secret key for security
 
 ### Optional Configuration
 
@@ -78,17 +77,16 @@ web: gunicorn api:app
 The application includes a `render.yaml` configuration file that specifies:
 - Build command: `pip install -r requirements.txt`
 - Start command: `gunicorn api:app`
+- Runtime: Python
 - Environment variables setup
-- Python version requirement
 
 To deploy on Render:
 1. Connect your repository to Render
 2. Render will automatically detect the `render.yaml` configuration
-3. Set your `SECRET_KEY` in the Render dashboard environment variables
-4. Deploy the application
+3. Deploy the application
 
 The application will automatically:
-- Use Python 3.11
+- Use Python runtime
 - Run in production mode
 - Listen on port 80
 - Use the correct FLASK_APP setting
@@ -99,7 +97,6 @@ The application will automatically:
 ```bash
 heroku config:set FLASK_ENV=production
 heroku config:set FLASK_APP=api.py
-heroku config:set SECRET_KEY=your-secure-secret-key
 ```
 
 2. Deploy your application:
@@ -120,7 +117,6 @@ docker run -p 80:80 \
   -e PORT=80 \
   -e FLASK_ENV=production \
   -e FLASK_APP=api.py \
-  -e SECRET_KEY=your-secure-secret-key \
   wikipedia-book-api
 ```
 

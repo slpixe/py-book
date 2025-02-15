@@ -1,7 +1,7 @@
 services:
   - type: web
     name: wikipedia-book-api
-    env: python
+    runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn api:app
     envVars:
@@ -11,5 +11,3 @@ services:
         value: api.py
       - key: PORT
         value: 80
-      - key: PYTHON_VERSION
-        value: 3.11.0

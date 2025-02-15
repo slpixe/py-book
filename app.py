@@ -11,7 +11,6 @@ from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 from functools import wraps
 import requests
-from pathlib import Path
 
 # Constants for LFS
 LFS_URL = "https://github.com/slpixe/py-book/raw/refs/heads/master/data/found_books_filtered.ndjson"
@@ -287,20 +286,42 @@ swaggerui_blueprint = get_swaggerui_blueprint(
 app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
 # Load and parse the NDJSON file
-books = []
-data_file = os.getenv('DATA_FILE', 'data/found_books_filtered.ndjson')
-
-app.logger.info(f'Attempting to load books from: {data_file}')
-
-if not os.path.exists(data_file):
-    app.logger.error(f'Database file not found: {data_file}')
-    # Try to fetch the file
-    if fetch_lfs_file(LFS_URL, data_file):
-        app.logger.info(f'Successfully fetched database file from LFS')
-    else:
-        app.logger.error(f'Failed to fetch database file from LFS')
-else:
+def load_books_data():
+    """Load books from data file, handling LFS pointer files if necessary"""
+    global books
+    data_file = os.getenv('DATA_FILE', 'data/found_books_filtered.ndjson')
+    books = []
+    
+    app.logger.info(f'Attempting to load books from: {data_file}')
+    
+    # Check if file exists
+    if not os.path.exists(data_file):
+        app.logger.error(f'Database file not found: {data_file}')
+        return False
+    
+    # Check if file is a Git LFS pointer file
     try:
+        with open(data_file, 'r') as f:
+            content = f.read().strip()
+            if content.startswith('version https://git-lfs'):
+                app.logger.info('Found LFS pointer file, downloading actual content...')
+                response = requests.get(LFS_URL, stream=True)
+                response.raise_for_status()
+                
+                with open(data_file, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                app.logger.info('Successfully downloaded actual content from LFS')
+                # After downloading LFS content, we need to parse it
+                return load_books_data()  # Recursively load books from downloaded content
+    except Exception as e:
+        app.logger.error(f'Error checking/downloading file: {str(e)}')
+        return False
+    
+    # Load the books data
+    try:
+        loaded_books = []  # Use a local list first
         with open(data_file, 'r', encoding='utf-8') as f:
             app.logger.info('Successfully opened database file, parsing content...')
             line_count = 0
@@ -315,7 +336,6 @@ else:
                         continue
                     
                     book_data = parsed_line[1]  # Get the second element (book data)
-                    # Extract relevant fields
                     book = {
                         'name': book_data.get('name', ''),
                         'author': book_data.get('author', ''),
@@ -327,59 +347,38 @@ else:
                         'pages': book_data.get('pages', ''),
                         'isbn': book_data.get('isbn', '')
                     }
-                    books.append(book)
+                    loaded_books.append(book)
                 except (json.JSONDecodeError, IndexError) as e:
                     app.logger.error(f'Error parsing line {line_count}: {str(e)}')
                     error_count += 1
                     continue
             
             app.logger.info(f'Finished processing {line_count} lines with {error_count} errors')
-            if books:
+            app.logger.info(f'Found {len(loaded_books)} valid books to load')
+            
+            if loaded_books:
+                # Only update the global books list if we successfully loaded data
+                app.logger.info('Updating global books list...')
+                books.clear()
+                books.extend(loaded_books)
                 app.logger.info(f'Successfully loaded {len(books)} books from {data_file}')
+                
+                # Double check the books were actually loaded
+                if not books:
+                    app.logger.error('Books list is empty after update!')
+                    return False
+                return True
             else:
                 app.logger.warning('No valid books were loaded from the file')
+                return False
     except Exception as e:
         app.logger.error(f'Error reading database file: {str(e)}')
-
-def fetch_lfs_file(url, local_path):
-    """Fetch the LFS file if it doesn't exist locally or is a pointer file"""
-    try:
-        # Create directory if it doesn't exist
-        Path(os.path.dirname(local_path)).mkdir(parents=True, exist_ok=True)
-        
-        needs_download = True
-        if os.path.exists(local_path):
-            # Check if it's a small pointer file (LFS files are typically larger)
-            if os.path.getsize(local_path) < 1000:  # Less than 1KB
-                try:
-                    with open(local_path, 'r') as f:
-                        content = f.read()
-                        # If it contains typical LFS pointer content or is too small
-                        if 'version https://git-lfs' in content or len(content.strip()) < 100:
-                            app.logger.info(f'Found LFS pointer file at {local_path}, will download actual content')
-                        else:
-                            needs_download = False
-                except UnicodeDecodeError:
-                    # If we can't read it as text, it's probably a binary file
-                    needs_download = False
-            else:
-                needs_download = False
-        
-        if needs_download:
-            app.logger.info(f'Downloading LFS file from: {url}')
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
-            
-            with open(local_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            app.logger.info(f'Successfully downloaded LFS file to: {local_path}')
-            return True
-        return True
-    except Exception as e:
-        app.logger.error(f'Error fetching LFS file: {str(e)}')
         return False
+
+# Initialize books and load data at startup
+books = []
+if not load_books_data():
+    app.logger.error('Failed to initialize books data')
 
 @app.route('/health')
 @limiter.exempt
@@ -392,7 +391,7 @@ def health_check():
 
 @app.route('/all')
 @limiter.limit("100/day")
-@cache.cached(timeout=300)
+@cache.cached(timeout=300, key_prefix=lambda: f"all_books_{request.args.get('page', 1)}_{request.args.get('limit', 100)}")
 @handle_errors
 @log_request
 def get_all_books():
@@ -403,9 +402,22 @@ def get_all_books():
         app.logger.error('No books available in the database')
         return jsonify({'error': 'No books available'}), 500
     
-    start_idx = (page - 1) * limit
-    end_idx = start_idx + limit
+    # Ensure limit is positive and within bounds
+    if limit < 1:
+        limit = 100
     
+    # Validate page number
+    total_pages = (len(books) + limit - 1) // limit
+    if page < 1:
+        page = 1
+    elif page > total_pages:
+        page = total_pages
+    
+    # Calculate slice indices
+    start_idx = (page - 1) * limit
+    end_idx = min(start_idx + limit, len(books))  # Don't exceed array bounds
+    
+    # Get exactly 'limit' number of items
     paginated_books = books[start_idx:end_idx]
     
     return jsonify({

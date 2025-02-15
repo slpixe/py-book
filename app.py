@@ -44,8 +44,12 @@ limiter = Limiter(
     app=app,
     key_func=get_remote_address,
     default_limits=[f"{os.getenv('RATE_LIMIT', '100')}/day"],
-    storage_uri="memory://"
+    storage_uri="memory://",
+    application_limits=[]  # No global limits
 )
+
+# Configure endpoints that should be exempt from rate limiting
+limiter.exempt_routes(["/health"])
 
 # Security headers middleware
 @app.after_request
@@ -285,33 +289,57 @@ app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 books = []
 data_file = os.getenv('DATA_FILE', 'data/found_books_filtered.ndjson')
 
-try:
-    with open(data_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            book_data = json.loads(line)[1]  # Get the second element (book data)
-            # Extract relevant fields
-            book = {
-                'name': book_data.get('name', ''),
-                'author': book_data.get('author', ''),
-                'language': book_data.get('language', ''),
-                'genre': book_data.get('genre', ''),
-                'publisher': book_data.get('publisher', ''),
-                'release_date': book_data.get('release_date', ''),
-                'media_type': book_data.get('media_type', ''),
-                'pages': book_data.get('pages', ''),
-                'isbn': book_data.get('isbn', '')
-            }
-            books.append(book)
-    app.logger.info(f'Successfully loaded {len(books)} books from {data_file}')
-except Exception as e:
-    app.logger.error(f'Error loading books: {str(e)}')
-    books = []
+app.logger.info(f'Attempting to load books from: {data_file}')
+
+if not os.path.exists(data_file):
+    app.logger.error(f'Database file not found: {data_file}')
+else:
+    try:
+        with open(data_file, 'r', encoding='utf-8') as f:
+            app.logger.info('Successfully opened database file, parsing content...')
+            line_count = 0
+            error_count = 0
+            for line in f:
+                try:
+                    line_count += 1
+                    parsed_line = json.loads(line)
+                    if not isinstance(parsed_line, list) or len(parsed_line) < 2:
+                        app.logger.warning(f'Invalid data format at line {line_count}: Expected list with at least 2 elements')
+                        error_count += 1
+                        continue
+                    
+                    book_data = parsed_line[1]  # Get the second element (book data)
+                    # Extract relevant fields
+                    book = {
+                        'name': book_data.get('name', ''),
+                        'author': book_data.get('author', ''),
+                        'language': book_data.get('language', ''),
+                        'genre': book_data.get('genre', ''),
+                        'publisher': book_data.get('publisher', ''),
+                        'release_date': book_data.get('release_date', ''),
+                        'media_type': book_data.get('media_type', ''),
+                        'pages': book_data.get('pages', ''),
+                        'isbn': book_data.get('isbn', '')
+                    }
+                    books.append(book)
+                except (json.JSONDecodeError, IndexError) as e:
+                    app.logger.error(f'Error parsing line {line_count}: {str(e)}')
+                    error_count += 1
+                    continue
+                        app.logger.info(f'Finished processing {line_count} lines with {error_count} errors')
+            if books:
+                app.logger.info(f'Successfully loaded {len(books)} books from {data_file}')
+            else:
+                app.logger.warning('No valid books were loaded from the file')
+    except Exception as e:
+        app.logger.error(f'Error reading database file: {str(e)}')
 
 @app.route('/health')
 def health_check():
     return jsonify({
         'status': 'healthy',
-        'version': '1.0.0'
+        'version': '1.0.0',
+        'books_loaded': len(books)
     })
 
 @app.route('/all')
@@ -322,6 +350,10 @@ def health_check():
 def get_all_books():
     limit = request.args.get('limit', default=100, type=int)
     page = request.args.get('page', default=1, type=int)
+    
+    if not books:
+        app.logger.error('No books available in the database')
+        return jsonify({'error': 'No books available'}), 500
     
     start_idx = (page - 1) * limit
     end_idx = start_idx + limit
@@ -344,24 +376,41 @@ def search_books():
     query_params = request.args.to_dict()
     
     if not query_params:
+        app.logger.warning('Search attempted with no parameters')
         return jsonify({'error': 'No search parameters provided'}), 400
     
-    filtered_books = books
-    for field, value in query_params.items():
-        if field not in books[0].keys():
-            app.logger.warning(f'Invalid search field attempted: {field}')
-            return jsonify({'error': f'Invalid field: {field}'}), 400
-            
-        # Case-insensitive substring search
-        filtered_books = [
-            book for book in filtered_books 
-            if str(value).lower() in str(book[field]).lower()
-        ]
+    if not books:
+        app.logger.error('Search attempted but no books available in the database')
+        return jsonify({'error': 'No books available'}), 500
     
-    return jsonify({
-        'books': filtered_books,
-        'total': len(filtered_books)
-    })
+    app.logger.info(f'Starting search with parameters: {query_params}')
+    
+    try:
+        filtered_books = books
+        for field, value in query_params.items():
+            if field not in books[0].keys():
+                app.logger.warning(f'Invalid search field attempted: {field}')
+                return jsonify({'error': f'Invalid field: {field}'}), 400
+                
+            # Case-insensitive substring search
+            filtered_books = [
+                book for book in filtered_books 
+                if str(value).lower() in str(book[field]).lower()
+            ]
+            app.logger.info(f'After filtering by {field}={value}: {len(filtered_books)} books remaining')
+        
+        if not filtered_books:
+            app.logger.info('Search returned no results')
+        else:
+            app.logger.info(f'Search completed successfully with {len(filtered_books)} results')
+        
+        return jsonify({
+            'books': filtered_books,
+            'total': len(filtered_books)
+        })
+    except Exception as e:
+        app.logger.error(f'Error during search: {str(e)}')
+        return jsonify({'error': 'Internal server error during search'}), 500
 
 if __name__ == '__main__':
     # Use environment variable for port with a default of 8080

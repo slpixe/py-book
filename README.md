@@ -66,15 +66,7 @@ These environment variables MUST be set in your production environment:
 
 ### Required Setup
 
-1. Ensure all required environment variables are set in your production environment:
-```bash
-PORT=80
-FLASK_ENV=production
-FLASK_APP=api.py
-SECRET_KEY=your-secure-secret-key
-```
-
-2. The application uses gunicorn for production deployment as specified in the Procfile:
+The application is configured to run with gunicorn in production as specified in the Procfile:
 ```bash
 web: gunicorn api:app
 ```
@@ -83,13 +75,23 @@ web: gunicorn api:app
 
 #### Render
 
-1. Set the required environment variables in the Render Dashboard:
-   - `PORT`: 80
-   - `FLASK_ENV`: production
-   - `FLASK_APP`: api.py
-   - `SECRET_KEY`: [your secure secret key]
+The application includes a `render.yaml` configuration file that specifies:
+- Build command: `pip install -r requirements.txt`
+- Start command: `gunicorn api:app`
+- Environment variables setup
+- Python version requirement
 
-2. The Procfile will automatically be used by Render to start the application
+To deploy on Render:
+1. Connect your repository to Render
+2. Render will automatically detect the `render.yaml` configuration
+3. Set your `SECRET_KEY` in the Render dashboard environment variables
+4. Deploy the application
+
+The application will automatically:
+- Use Python 3.11
+- Run in production mode
+- Listen on port 80
+- Use the correct FLASK_APP setting
 
 #### Heroku
 

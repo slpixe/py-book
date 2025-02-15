@@ -10,6 +10,11 @@ import logging
 from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 from functools import wraps
+import requests
+from pathlib import Path
+
+# Constants for LFS
+LFS_URL = "https://github.com/slpixe/py-book/raw/refs/heads/master/data/found_books_filtered.ndjson"
 
 # Load environment variables
 load_dotenv()
@@ -289,6 +294,11 @@ app.logger.info(f'Attempting to load books from: {data_file}')
 
 if not os.path.exists(data_file):
     app.logger.error(f'Database file not found: {data_file}')
+    # Try to fetch the file
+    if fetch_lfs_file(LFS_URL, data_file):
+        app.logger.info(f'Successfully fetched database file from LFS')
+    else:
+        app.logger.error(f'Failed to fetch database file from LFS')
 else:
     try:
         with open(data_file, 'r', encoding='utf-8') as f:
@@ -330,6 +340,28 @@ else:
                 app.logger.warning('No valid books were loaded from the file')
     except Exception as e:
         app.logger.error(f'Error reading database file: {str(e)}')
+
+def fetch_lfs_file(url, local_path):
+    """Fetch the LFS file if it doesn't exist locally"""
+    try:
+        # Create directory if it doesn't exist
+        Path(os.path.dirname(local_path)).mkdir(parents=True, exist_ok=True)
+        
+        if not os.path.exists(local_path):
+            app.logger.info(f'LFS file not found locally, downloading from: {url}')
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            
+            with open(local_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            app.logger.info(f'Successfully downloaded LFS file to: {local_path}')
+            return True
+        return True
+    except Exception as e:
+        app.logger.error(f'Error fetching LFS file: {str(e)}')
+        return False
 
 @app.route('/health')
 @limiter.exempt

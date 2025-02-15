@@ -342,13 +342,31 @@ else:
         app.logger.error(f'Error reading database file: {str(e)}')
 
 def fetch_lfs_file(url, local_path):
-    """Fetch the LFS file if it doesn't exist locally"""
+    """Fetch the LFS file if it doesn't exist locally or is a pointer file"""
     try:
         # Create directory if it doesn't exist
         Path(os.path.dirname(local_path)).mkdir(parents=True, exist_ok=True)
         
-        if not os.path.exists(local_path):
-            app.logger.info(f'LFS file not found locally, downloading from: {url}')
+        needs_download = True
+        if os.path.exists(local_path):
+            # Check if it's a small pointer file (LFS files are typically larger)
+            if os.path.getsize(local_path) < 1000:  # Less than 1KB
+                try:
+                    with open(local_path, 'r') as f:
+                        content = f.read()
+                        # If it contains typical LFS pointer content or is too small
+                        if 'version https://git-lfs' in content or len(content.strip()) < 100:
+                            app.logger.info(f'Found LFS pointer file at {local_path}, will download actual content')
+                        else:
+                            needs_download = False
+                except UnicodeDecodeError:
+                    # If we can't read it as text, it's probably a binary file
+                    needs_download = False
+            else:
+                needs_download = False
+        
+        if needs_download:
+            app.logger.info(f'Downloading LFS file from: {url}')
             response = requests.get(url, stream=True)
             response.raise_for_status()
             
